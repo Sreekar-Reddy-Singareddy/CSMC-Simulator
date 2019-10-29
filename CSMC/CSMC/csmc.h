@@ -28,4 +28,6 @@ void * get_tutor_help (void *);
 // Start point for the coordinator thread
 void * coordinate_tutoring (void *);
 
+void do_programming (void);
+
 #endif /* csmc_h */
