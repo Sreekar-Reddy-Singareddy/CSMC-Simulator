@@ -50,6 +50,7 @@ int main(int argc, const char * argv[]) {
     // All memory allocations
     stud = malloc(sizeof(sem_t));
     coor = malloc(sizeof(sem_t));
+    active = malloc(sizeof(struct student));
     done_tutoring = malloc(sizeof(sem_t));
     waiting_hall_lock = malloc(sizeof(pthread_mutex_t));
     tutors_list_lock = malloc(sizeof(pthread_mutex_t));
