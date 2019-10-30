@@ -1,4 +1,4 @@
-//
+A//
 //  main.c
 //  CSMC
 //
@@ -22,7 +22,7 @@
 #define TUTORS 3
 #define CHAIRS 5
 #define MAX_VISITS 5
-#define TEST_MODE 1
+#define TEST_MODE 0
 
 struct student * queue [CHAIRS];
 struct tutor * tutors [TUTORS];
@@ -55,15 +55,19 @@ int main(int argc, const char * argv[]) {
     waiting_hall_lock = malloc(sizeof(pthread_mutex_t));
     tutors_list_lock = malloc(sizeof(pthread_mutex_t));
     empty_chairs_lock = malloc(sizeof(pthread_mutex_t));
-    
+    hall = malloc(sizeof(struct waiting_hall));    
+
     int i;
     void *value;
     sem_init(stud, 0, 1);
     sem_init(coor, 0, 0);
     sem_init(done_tutoring, 0, 0);
-    pthread_mutex_init(&waiting_hall_lock, NULL);
-    pthread_mutex_init(&tutors_list_lock, NULL);
-    pthread_mutex_init(&empty_chairs_lock, NULL);
+    pthread_mutex_init(waiting_hall_lock, NULL);
+    pthread_mutex_init(tutors_list_lock, NULL);
+    pthread_mutex_init(empty_chairs_lock, NULL);
+    hall->first = NULL;
+    hall->last = NULL;
+    hall->size = 0;
     
     
     // Initialising the queue for students
@@ -93,7 +97,7 @@ int main(int argc, const char * argv[]) {
     
     // Wait for all these threads to finish and join
     for (i=0; i<TUTORS; i++){
-        int code = pthread_join(t_threads[i], &value);
+        int code = pthread_join(t_threads[i], NULL);
         SPAM(("Completed T thread(%d) %d\n",i, code));
     }
     
@@ -110,18 +114,18 @@ int main(int argc, const char * argv[]) {
         assert(pthread_create(&s_threads[i], NULL, get_tutor_help, s) == 0);
     }
     
-    // Wait for all these threads to finish and join
-    for (i=0; i<STUDENTS; i++){
-        int code = pthread_join(s_threads[i], &value);
-        SPAM(("Completed S thread(%d) %d\n",i, code));
-    }
-    
     // Create thread for coordinator
     c_thread = malloc(sizeof(pthread_t));
     assert(pthread_create(c_thread, NULL, coordinate_tutoring, NULL) == 0);
     
     // Wait for all these threads to finish and join
-    pthread_join(*c_thread, &value);
+    for (i=0; i<STUDENTS; i++){
+      int code = pthread_join(s_threads[i], NULL);
+      SPAM(("Completed S thread(%d) %d\n",i, code));
+    }
+
+    // Wait for all these threads to finish and join
+    pthread_join(*c_thread, NULL);
     
     return 0;
 }
@@ -129,6 +133,7 @@ int main(int argc, const char * argv[]) {
 // Starting point for the exeution of tutor threads
 void * start_tutoring (void * arg) {
     struct tutor * t = (struct tutor *) arg;
+    SPAM(("Tutor: %d\n", t->id));
     /*
      0. Open the cabin and start waiting. Before waiting, update the status: tutor->status = 0; This means tutor is idle. **LOCK NEEDED ON TUTOR LIST**
      1. Wait for coordinator to let you know about students: sem_wait(tut_sems[id]); This makes tut_sems[id] = -1 until coor signals.
@@ -157,17 +162,17 @@ void * get_tutor_help (void * student) {
      10. Do programming. Come back to CSMC again later: do_programmming(); continue to while loop; This starts the process again from step 1.
      */
     while (s->visits < MAX_VISITS) {
-        SPAM(("Hey, I (S%d) need some tutor help!", s->id));
-        pthread_mutex_lock(&empty_chairs_lock);
+        SPAM(("Hey, I (S%d) need some tutor help!\n", s->id));
+        pthread_mutex_lock(empty_chairs_lock);
         if (empty_chairs <= 0) {
-            pthread_mutex_unlock(&empty_chairs_lock);
+            pthread_mutex_unlock(empty_chairs_lock);
             do_programming();
             continue;
         }
         else {
-            empty_chairs--;
-            pthread_mutex_unlock(&empty_chairs_lock);
-            sem_wait(stud);
+	    empty_chairs--;
+	    pthread_mutex_unlock(empty_chairs_lock);
+	    sem_wait(stud);
             active = s;
             sem_post(coor);
 //            sem_wait(done_tutoring);
@@ -192,23 +197,32 @@ void * coordinate_tutoring(void * arg) {
      9. This completes the job of coor for now. He must again repeat the cycle from step 1 through 7: continue while loop
      */
     int total = MAX_VISITS*STUDENTS;
-    SPAM(("CSMC Opened.\n"));
+    SPAM(("CSMC Opened for %d visits.\n", total));
     
     while (total > 0) {
         sem_wait(coor);
         active->visits++;
-        pthread_mutex_lock(&waiting_hall_lock);
+        pthread_mutex_lock(waiting_hall_lock);
         add_student(active);
-        pthread_mutex_unlock(&waiting_hall_lock);
-        sem_post(stud);
+        pthread_mutex_unlock(waiting_hall_lock);
         // Below is actually done by the tutor
-        pthread_mutex_lock(&waiting_hall_lock);
-        struct student * s = remove_student();
-        pthread_mutex_unlock(&waiting_hall_lock);
-        sleep(2); // Tutoring simulation
+        pthread_mutex_lock(waiting_hall_lock);
+	print_hall(); // Dev
+        struct student * s = remove_student(); 
+	SPAM(("Now tutoring S%d\n", s->id)); // DEV
+	print_hall(); // DEV
+        pthread_mutex_unlock(waiting_hall_lock);
+	SPAM(("Lock released\n")); // Dev
+	pthread_mutex_lock(empty_chairs_lock);
+	SPAM(("Chairs B: %d\n", empty_chairs));
+	empty_chairs++;
+	SPAM(("Chairs A: %d\n", empty_chairs));
+	pthread_mutex_unlock(empty_chairs_lock);
+        //sleep(2); // Tutoring simulation
 //        sem_post(done_tutoring);
         SPAM(("Student %d done. He has %d visits left.\n", s->id, MAX_VISITS-s->visits));
         total--;
+	sem_post(stud);
     }
     
     return NULL;
@@ -216,7 +230,7 @@ void * coordinate_tutoring(void * arg) {
 
 // Do the programming for 2ms and come back
 void do_programming (void) {
-    //    SPAM(("Programming...\n"));
+    SPAM(("Programming...\n"));
     usleep(2);
 }
 
@@ -234,7 +248,7 @@ void insertBefore(struct student * prev, struct student * new) {
 
 // Removes the first student in the hall (hall->first), if any.
 struct student * remove_student() {
-    printf("Removing student\n");
+    printf("\nRemoving student\n");
     if (hall->first == NULL) { // Empty hall case
         printf("No one in the hall yet!\n");
         return NULL;
@@ -250,9 +264,10 @@ struct student * remove_student() {
 
 // Prints the students waiting in hall currently.
 void print_hall() {
+    SPAM(("Printing... %s\n", hall->first));
     struct student * node = hall->first;
     while (node != NULL) {
-        printf("Student: %d Visits: %d\n", node->id, node->visits);
+        printf("Student: %d (Visits: %d) ---> ", node->id, node->visits);
         node = node->next;
     }
 }
@@ -266,7 +281,8 @@ void add_student(struct student * new) {
     hall->size++;
     if(hall->first == NULL) { // CASE 1
         printf("C1\n");
-        hall->first = hall->last = new;
+        hall->first = new;
+	hall->last = new;
     }
     else if (hall->first->next == NULL) { // CASE 2
         printf("C2\n");
