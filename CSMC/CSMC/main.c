@@ -37,6 +37,132 @@ sem_t * coor;
 
 // TEST_MODE
 struct waiting_hall * hall;
+void test_queue(void);
+
+int main(int argc, const char * argv[]) {
+    if (TEST_MODE) {
+        test_queue();
+        return 0;
+    }
+    
+    int i;
+    void *value;
+    stud = sem_init(stud, 0, 1);
+    stud = sem_init(coor, 0, 1);
+    
+    // Initialising the queue for students
+    for (i=0; i<CHAIRS; i++) {
+        queue[i] = malloc(sizeof(struct student));
+    }
+    
+    // Initialising the list for tutors
+    for (i=0; i<TUTORS; i++) {
+        tutors[i] = malloc(sizeof(struct tutor));
+    }
+    
+    // Create threads for tutors
+    // Also initialise each thread such that the
+    // execution starts from the start_tutoring function
+    for (i=0; i<TUTORS; i++) {
+        t_threads = malloc(sizeof(pthread_t)*TUTORS);
+        // Create a tutor for every thread
+        struct tutor * t = malloc(sizeof(struct tutor));
+        t->id = i;
+        t->status = 0;
+        t->student = NULL;
+        assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
+    }
+    
+    // Wait for all these threads to finish and join
+    for (i=0; i<TUTORS; i++){
+        int code = pthread_join(t_threads[i], &value);
+        SPAM(("Completed T thread(%d) %d\n",i, code));
+    }
+    
+    // Create threads for students
+    // Also initialise each thread such that the
+    // execution starts from the get_tutor_help function
+    for (i=0; i<STUDENTS; i++) {
+        pthread_mutex_init(&s_locks[i], NULL);
+        s_threads = malloc(sizeof(pthread_t)*STUDENTS);
+        // Create a student for this thread
+        struct student * s = malloc(sizeof(struct student));
+        s->id = i;
+        s->status = 0;
+        s->visits = 0;
+        assert(pthread_create(&s_threads[i], NULL, get_tutor_help, s) == 0);
+    }
+    
+    // Wait for all these threads to finish and join
+    for (i=0; i<STUDENTS; i++){
+        int code = pthread_join(s_threads[i], &value);
+        SPAM(("Completed S thread(%d) %d\n",i, code));
+    }
+    
+    // Create thread for coordinator
+    c_thread = malloc(sizeof(pthread_t));
+    assert(pthread_create(c_thread, NULL, coordinate_tutoring, NULL) == 0);
+    
+    // Wait for all these threads to finish and join
+    pthread_join(*c_thread, &value);
+    
+    return 0;
+}
+
+// Starting point for the exeution of tutor threads
+void * start_tutoring (void * arg) {
+    struct tutor * t = (struct tutor *) arg;
+    /*
+     0. Open the cabin and start waiting. Before waiting, update the status: tutor->status = 0; This means tutor is idle. **LOCK NEEDED ON TUTOR LIST**
+     1. Wait for coordinator to let you know about students: sem_wait(tut_sems[id]); This makes tut_sems[id] = -1 until coor signals.
+     2. Keep waiting until coordinator signals tut_sems[id] to continue: spinning
+     3. After signalled (makes tut_sems[id] = 0), update the status: tutot->status = 1; This means tutor is busy. **LOCK NEEDED ON TUTOR LIST**
+     4. Get the 'first' student from the waiting hall: remove_student() -> student; This is the student you need to tutor. **LOCK NEEDED ON WAITING_HALL**
+     5. Sleep for 2 sec (tutoring time) and then make 'student'->'tutor' as NULL: student->tutor = NULL; Because student is done getting help.
+     6. Done for now. Continue waiting for coordinator signal: sem_wait(tut_sems[id]); Makes tut_sems[id] = -1 again.
+     */
+    return NULL;
+}
+
+// Starting point for the execution of student threads
+void * get_tutor_help (void * student) {
+    struct student * s = (struct student *) student;
+    /*
+     1. Student enters the CSMC as 's'.
+     2. Gets a lock on empty chairs as they entered first: lock(empty_chairs)
+     3. Checks for empty chairs > 0. If not, just release the lock and leave CSMC: unlock(empty_chairs); do_programming(); continue;
+     4. If available, reduce the chairs by 1: empty_chairs--; Because a chair is now filled.
+     5. Release the lock on empty_chairs now: unlock(empty_chairs)
+     6. Wait on 'stud' semaphore until the 'new' student is added to the waiting hall: sem_wait(stud); this makes next students wait outside CSMC.
+     7. Assign 's' to 'new' (global): new = s; this updates the currently interacting student with coor.
+     8. Signal the 'coor' that 'new' has arrived: sem_post(coor); this make coor = 1.
+     9. ... waiting and tutoring here
+     10. Do programming. Come back to CSMC again later: do_programmming(); continue to while loop; This starts the process again from step 1.
+     */
+    return NULL;
+}
+
+// Starting point for the execution of coordintor thread
+void * coordinate_tutoring() { // Why not error without any args?
+    /*
+     1. Open CSMC and wait for students to come: sem_wait(coor); This makes coor = -1 until some student signals.
+     2. Keep waiting until some student signals coor to continue: spinning
+     3. Get the student who has signalled coor: use some global variable(new)
+     4. Add this student to the waiting hall: add_student(new); This adds the student to the hall. **LOCK NEEDED ON WAITING_HALL**
+     5. Signal that next student can come and wait now: sem_post(stud); this lets the next student come inside CSMC.
+     5. Check the tutors list and see if any tutor is idle: get_idle_tutor() -> tutor (or NULL) **LOCK NEEDED ON TUTOR LIST**
+     6. If 'tutor' is null (everyone busy), then continue and wait for next student: loop -> sem_wait(coor)
+     7. Else, get the 'id' of the tutor and signal the corresponding semaphore: sem_post(tut_sems[id])
+     8. This completes the job of coor for now. He must again repeat the cycle from step 1 through 7: continue while loop
+     */
+    return NULL;
+}
+
+// Do the programming for 2ms and come back
+void do_programming (void) {
+    //    SPAM(("Programming...\n"));
+    usleep(2);
+}
 
 // Inserts a new student (new) in the hall, after a given student (prev).
 void insertBefore(struct student * prev, struct student * new) {
@@ -149,134 +275,4 @@ void test_queue() {
     struct student * s6 = malloc(sizeof(struct student));
     s6->id=6; s6->status=0; s6->visits=0; s6->next = NULL;
     add_student(s6); print_hall();
-}
-
-int main(int argc, const char * argv[]) {
-    if (TEST_MODE) {
-        test_queue();
-        return 0;
-    }
-    
-    int i;
-    void *value;
-    stud = sem_init(stud, 0, 1);
-    stud = sem_init(coor, 0, 1);
-    
-    // Initialising the queue for students
-    for (i=0; i<CHAIRS; i++) {
-        queue[i] = malloc(sizeof(struct student));
-    }
-    
-    // Initialising the list for tutors
-    for (i=0; i<TUTORS; i++) {
-        tutors[i] = malloc(sizeof(struct tutor));
-    }
-    
-    // Create threads for tutors
-    // Also initialise each thread such that the
-    // execution starts from the start_tutoring function
-    for (i=0; i<TUTORS; i++) {
-        t_threads = malloc(sizeof(pthread_t)*TUTORS);
-        // Create a tutor for every thread
-        struct tutor * t = malloc(sizeof(struct tutor));
-        t->id = i;
-        t->status = 0;
-        t->student = NULL;
-        assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
-    }
-    
-    // Wait for all these threads to finish and join
-    for (i=0; i<TUTORS; i++){
-        int code = pthread_join(t_threads[i], &value);
-        SPAM(("Completed T thread(%d) %d\n",i, code));
-    }
-    
-    // Create threads for students
-    // Also initialise each thread such that the
-    // execution starts from the get_tutor_help function
-    for (i=0; i<STUDENTS; i++) {
-        pthread_mutex_init(&s_locks[i], NULL);
-        s_threads = malloc(sizeof(pthread_t)*STUDENTS);
-        // Create a student for this thread
-        struct student * s = malloc(sizeof(struct student));
-        s->id = i;
-        s->status = 0;
-        s->visits = 0;
-        assert(pthread_create(&s_threads[i], NULL, get_tutor_help, s) == 0);
-    }
-    
-    // Wait for all these threads to finish and join
-    for (i=0; i<STUDENTS; i++){
-        int code = pthread_join(s_threads[i], &value);
-        SPAM(("Completed S thread(%d) %d\n",i, code));
-    }
-    
-    // Create thread for coordinator
-    c_thread = malloc(sizeof(pthread_t));
-    assert(pthread_create(c_thread, NULL, coordinate_tutoring, NULL) == 0);
-    
-    // Wait for all these threads to finish and join
-    pthread_join(*c_thread, &value);
-    
-    return 0;
-}
-
-// Starting point for the exeution of tutor threads
-void * start_tutoring (void * arg) {
-    struct tutor * t = (struct tutor *) arg;
-    SPAM(("T Thread: ID = %d\n",t->id));
-    return NULL;
-}
-
-// Starting point for the execution of student threads
-void * get_tutor_help (void * student) {
-    struct student * s = (struct student *) student;
-//    SPAM(("S Thread: Student ID = %d\n", s->id));
-    
-    // Come back to get help as long as vists are remaining
-    while (s->visits < MAX_VISITS) {
-        // CRITICAL SECTION - START
-        pthread_mutex_lock(&s_locks[s->id]);
-        sem_wait(coor);
-        if (empty_chairs <= 0) {
-            // Go back to programming and return later...
-            SPAM(("No Chairs\n"));
-            do_programming();
-            continue;
-        }
-        else {
-            SPAM(("Student %d Got a Chair\n", s->id));
-            // Notify the coordinator using semaphore
-            sleep(1);
-            sem_post(stud);
-            // Get a chair and sit
-            empty_chairs -= 1; // Sit in chair
-            usleep(20); // Get tutoring for 200ms
-            empty_chairs += 1; // Get up from chair
-            s->visits++; // Increase visits
-            do_programming(); // Get back to work
-        }
-        pthread_mutex_unlock(&s_locks[s->id]);
-        // CRITICAL SECTION - END
-    }
-    
-    // Got maximum help. Terminate the thread now!
-    return NULL;
-}
-
-// Do the programming for 2ms and come back
-void do_programming (void) {
-//    SPAM(("Programming...\n"));
-    usleep(2);
-}
-
-// Starting point for the execution of coordintor thread
-void * coordinate_tutoring() { // Why not error without any args?
-    while (1) {
-        sem_wait(stud);
-        SPAM(("Some student has come\n"));
-        sleep(0.5);
-        sem_post(coor);
-    }
-    return NULL;
 }
