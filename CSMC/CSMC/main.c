@@ -136,7 +136,7 @@ void * get_tutor_help (void * student) {
 }
 
 // Starting point for the execution of coordintor thread
-void * coordinate_tutoring() { // Why not error without any args?
+void * coordinate_tutoring(void * arg) { // Why not error without any args?
     /*
      1. Open CSMC and wait for students to come: sem_wait(coor); This makes coor = -1 until some student signals.
      2. Keep waiting until some student signals coor to continue: spinning
