@@ -29,11 +29,7 @@ struct tutor * tutors [TUTORS];
 pthread_t * t_threads;
 pthread_t * s_threads;
 pthread_t * c_thread;
-pthread_mutex_t * s_locks[STUDENTS];
 int empty_chairs = CHAIRS;
-
-sem_t * stud;
-sem_t * coor;
 
 // TEST_MODE
 struct waiting_hall * hall;
@@ -47,8 +43,6 @@ int main(int argc, const char * argv[]) {
     
     int i;
     void *value;
-    stud = sem_init(stud, 0, 1);
-    stud = sem_init(coor, 0, 1);
     
     // Initialising the queue for students
     for (i=0; i<CHAIRS; i++) {
@@ -63,8 +57,8 @@ int main(int argc, const char * argv[]) {
     // Create threads for tutors
     // Also initialise each thread such that the
     // execution starts from the start_tutoring function
+    t_threads = malloc(sizeof(pthread_t)*TUTORS);
     for (i=0; i<TUTORS; i++) {
-        t_threads = malloc(sizeof(pthread_t)*TUTORS);
         // Create a tutor for every thread
         struct tutor * t = malloc(sizeof(struct tutor));
         t->id = i;
@@ -82,9 +76,8 @@ int main(int argc, const char * argv[]) {
     // Create threads for students
     // Also initialise each thread such that the
     // execution starts from the get_tutor_help function
+    s_threads = malloc(sizeof(pthread_t)*STUDENTS);
     for (i=0; i<STUDENTS; i++) {
-        pthread_mutex_init(&s_locks[i], NULL);
-        s_threads = malloc(sizeof(pthread_t)*STUDENTS);
         // Create a student for this thread
         struct student * s = malloc(sizeof(struct student));
         s->id = i;
