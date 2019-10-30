@@ -1,4 +1,4 @@
-A//
+//
 //  main.c
 //  CSMC
 //
@@ -55,8 +55,8 @@ int main(int argc, const char * argv[]) {
     waiting_hall_lock = malloc(sizeof(pthread_mutex_t));
     tutors_list_lock = malloc(sizeof(pthread_mutex_t));
     empty_chairs_lock = malloc(sizeof(pthread_mutex_t));
-    hall = malloc(sizeof(struct waiting_hall));    
-
+    hall = malloc(sizeof(struct waiting_hall));
+    
     int i;
     void *value;
     sem_init(stud, 0, 1);
@@ -120,10 +120,10 @@ int main(int argc, const char * argv[]) {
     
     // Wait for all these threads to finish and join
     for (i=0; i<STUDENTS; i++){
-      int code = pthread_join(s_threads[i], NULL);
-      SPAM(("Completed S thread(%d) %d\n",i, code));
+        int code = pthread_join(s_threads[i], NULL);
+        SPAM(("Completed S thread(%d) %d\n",i, code));
     }
-
+    
     // Wait for all these threads to finish and join
     pthread_join(*c_thread, NULL);
     
@@ -170,12 +170,13 @@ void * get_tutor_help (void * student) {
             continue;
         }
         else {
-	    empty_chairs--;
-	    pthread_mutex_unlock(empty_chairs_lock);
-	    sem_wait(stud);
+            SPAM(("***\n"));
+            empty_chairs--;
+            pthread_mutex_unlock(empty_chairs_lock);
+            sem_wait(stud);
             active = s;
             sem_post(coor);
-//            sem_wait(done_tutoring);
+            //            sem_wait(done_tutoring);
             do_programming();
         }
     }
@@ -207,22 +208,21 @@ void * coordinate_tutoring(void * arg) {
         pthread_mutex_unlock(waiting_hall_lock);
         // Below is actually done by the tutor
         pthread_mutex_lock(waiting_hall_lock);
-	print_hall(); // Dev
-        struct student * s = remove_student(); 
-	SPAM(("Now tutoring S%d\n", s->id)); // DEV
-	print_hall(); // DEV
+        print_hall(); // Dev
+        struct student * s = remove_student();
+        SPAM(("Now tutoring S%d\n", s->id)); // DEV
+        print_hall(); // DEV
         pthread_mutex_unlock(waiting_hall_lock);
-	SPAM(("Lock released\n")); // Dev
-	pthread_mutex_lock(empty_chairs_lock);
-	SPAM(("Chairs B: %d\n", empty_chairs));
-	empty_chairs++;
-	SPAM(("Chairs A: %d\n", empty_chairs));
-	pthread_mutex_unlock(empty_chairs_lock);
+        SPAM(("Lock released\n")); // Dev
+        pthread_mutex_lock(empty_chairs_lock);
+        SPAM(("Chairs B: %d\n", empty_chairs));
+        empty_chairs++;
+        SPAM(("Chairs A: %d\n", empty_chairs));
+        pthread_mutex_unlock(empty_chairs_lock);
         //sleep(2); // Tutoring simulation
-//        sem_post(done_tutoring);
         SPAM(("Student %d done. He has %d visits left.\n", s->id, MAX_VISITS-s->visits));
         total--;
-	sem_post(stud);
+        sem_post(stud);
     }
     
     return NULL;
@@ -282,7 +282,7 @@ void add_student(struct student * new) {
     if(hall->first == NULL) { // CASE 1
         printf("C1\n");
         hall->first = new;
-	hall->last = new;
+        hall->last = new;
     }
     else if (hall->first->next == NULL) { // CASE 2
         printf("C2\n");
