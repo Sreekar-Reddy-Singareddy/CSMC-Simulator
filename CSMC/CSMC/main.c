@@ -30,6 +30,12 @@ pthread_t * t_threads;
 pthread_t * s_threads;
 pthread_t * c_thread;
 int empty_chairs = CHAIRS;
+struct student * active;
+pthread_mutex_t * waiting_hall_lock;
+pthread_mutex_t * tutors_list_lock;
+pthread_mutex_t * empty_chairs_lock;
+
+sem_t * stud, * coor, * done_tutoring, * tut_sems[TUTORS];
 
 // TEST_MODE
 struct waiting_hall * hall;
@@ -41,8 +47,23 @@ int main(int argc, const char * argv[]) {
         return 0;
     }
     
+    // All memory allocations
+    stud = malloc(sizeof(sem_t));
+    coor = malloc(sizeof(sem_t));
+    done_tutoring = malloc(sizeof(sem_t));
+    waiting_hall_lock = malloc(sizeof(pthread_mutex_t));
+    tutors_list_lock = malloc(sizeof(pthread_mutex_t));
+    empty_chairs_lock = malloc(sizeof(pthread_mutex_t));
+    
     int i;
     void *value;
+    sem_init(stud, 0, 1);
+    sem_init(coor, 0, 0);
+    sem_init(done_tutoring, 0, 0);
+    pthread_mutex_init(&waiting_hall_lock, NULL);
+    pthread_mutex_init(&tutors_list_lock, NULL);
+    pthread_mutex_init(&empty_chairs_lock, NULL);
+    
     
     // Initialising the queue for students
     for (i=0; i<CHAIRS; i++) {
@@ -60,6 +81,8 @@ int main(int argc, const char * argv[]) {
     t_threads = malloc(sizeof(pthread_t)*TUTORS);
     for (i=0; i<TUTORS; i++) {
         // Create a tutor for every thread
+        tut_sems[i] = malloc(sizeof(sem_t));
+        sem_init(tut_sems[i], 0, 0);
         struct tutor * t = malloc(sizeof(struct tutor));
         t->id = i;
         t->status = 0;
@@ -129,25 +152,64 @@ void * get_tutor_help (void * student) {
      6. Wait on 'stud' semaphore until the 'new' student is added to the waiting hall: sem_wait(stud); this makes next students wait outside CSMC.
      7. Assign 's' to 'new' (global): new = s; this updates the currently interacting student with coor.
      8. Signal the 'coor' that 'new' has arrived: sem_post(coor); this make coor = 1.
-     9. ... waiting and tutoring here
+     9. Wait until tutoring is done: sem_wait(done_tutoring); Makes the stud wait here until signal sent from tutor.
      10. Do programming. Come back to CSMC again later: do_programmming(); continue to while loop; This starts the process again from step 1.
      */
+    while (s->visits < MAX_VISITS) {
+        SPAM(("Hey, I (S%d) need some tutor help!", s->id));
+        pthread_mutex_lock(&empty_chairs_lock);
+        if (empty_chairs <= 0) {
+            pthread_mutex_unlock(&empty_chairs_lock);
+            do_programming();
+            continue;
+        }
+        else {
+            empty_chairs--;
+            pthread_mutex_unlock(&empty_chairs_lock);
+            sem_wait(stud);
+            active = s;
+            sem_post(coor);
+//            sem_wait(done_tutoring);
+            do_programming();
+        }
+    }
+    
     return NULL;
 }
 
 // Starting point for the execution of coordintor thread
-void * coordinate_tutoring(void * arg) { // Why not error without any args?
+void * coordinate_tutoring(void * arg) {
     /*
      1. Open CSMC and wait for students to come: sem_wait(coor); This makes coor = -1 until some student signals.
      2. Keep waiting until some student signals coor to continue: spinning
      3. Get the student who has signalled coor: use some global variable(new)
      4. Add this student to the waiting hall: add_student(new); This adds the student to the hall. **LOCK NEEDED ON WAITING_HALL**
      5. Signal that next student can come and wait now: sem_post(stud); this lets the next student come inside CSMC.
-     5. Check the tutors list and see if any tutor is idle: get_idle_tutor() -> tutor (or NULL) **LOCK NEEDED ON TUTOR LIST**
-     6. If 'tutor' is null (everyone busy), then continue and wait for next student: loop -> sem_wait(coor)
-     7. Else, get the 'id' of the tutor and signal the corresponding semaphore: sem_post(tut_sems[id])
-     8. This completes the job of coor for now. He must again repeat the cycle from step 1 through 7: continue while loop
+     6. Check the tutors list and see if any tutor is idle: get_idle_tutor() -> tutor (or NULL) **LOCK NEEDED ON TUTOR LIST**
+     7. If 'tutor' is null (everyone busy), then continue and wait for next student: loop -> sem_wait(coor)
+     8. Else, get the 'id' of the tutor and signal the corresponding semaphore: sem_post(tut_sems[id])
+     9. This completes the job of coor for now. He must again repeat the cycle from step 1 through 7: continue while loop
      */
+    int total = MAX_VISITS*STUDENTS;
+    SPAM(("CSMC Opened.\n"));
+    
+    while (total > 0) {
+        sem_wait(coor);
+        active->visits++;
+        pthread_mutex_lock(&waiting_hall_lock);
+        add_student(active);
+        pthread_mutex_unlock(&waiting_hall_lock);
+        sem_post(stud);
+        // Below is actually done by the tutor
+        pthread_mutex_lock(&waiting_hall_lock);
+        struct student * s = remove_student();
+        pthread_mutex_unlock(&waiting_hall_lock);
+        sleep(2); // Tutoring simulation
+//        sem_post(done_tutoring);
+        SPAM(("Student %d done. He has %d visits left.\n", s->id, MAX_VISITS-s->visits));
+        total--;
+    }
+    
     return NULL;
 }
 
@@ -170,17 +232,19 @@ void insertBefore(struct student * prev, struct student * new) {
 }
 
 // Removes the first student in the hall (hall->first), if any.
-void remove_student() {
+struct student * remove_student() {
     printf("Removing student\n");
     if (hall->first == NULL) { // Empty hall case
         printf("No one in the hall yet!\n");
-        return;
+        return NULL;
     }
+    struct student * s = hall->first;
     hall->first = hall->first->next;
     if (hall->first == NULL) { // Only 1 student was there and removed
         hall->last = NULL;
     }
     hall->size--;
+    return s;
 }
 
 // Prints the students waiting in hall currently.

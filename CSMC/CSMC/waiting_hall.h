@@ -20,7 +20,7 @@ struct waiting_hall {
 // Utility functions for managing the hall waiting list.
 void add_student(struct student *);
 void insertBefore(struct student *, struct student *);
-void remove_student(void);
+struct student * remove_student(void);
 void print_hall(void);
 
 #endif /* waiting_hall_h */
