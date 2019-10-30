@@ -210,7 +210,7 @@ void * coordinate_tutoring(void * arg) {
         pthread_mutex_lock(waiting_hall_lock);
         print_hall(); // Dev
         struct student * s = remove_student();
-        SPAM(("Now tutoring S%d\n", s->id)); // DEV
+        printf("Now tutoring S%d\n", s->id); // DEV
         print_hall(); // DEV
         pthread_mutex_unlock(waiting_hall_lock);
         SPAM(("Lock released\n")); // Dev
@@ -220,7 +220,7 @@ void * coordinate_tutoring(void * arg) {
         SPAM(("Chairs A: %d\n", empty_chairs));
         pthread_mutex_unlock(empty_chairs_lock);
         //sleep(2); // Tutoring simulation
-        SPAM(("Student %d done. He has %d visits left.\n", s->id, MAX_VISITS-s->visits));
+        printf("Student %d done. He has %d visits left.\n", s->id, MAX_VISITS-s->visits);
         total--;
         sem_post(stud);
     }
@@ -248,9 +248,9 @@ void insertBefore(struct student * prev, struct student * new) {
 
 // Removes the first student in the hall (hall->first), if any.
 struct student * remove_student() {
-    printf("\nRemoving student\n");
+  SPAM(("\nRemoving student\n"));
     if (hall->first == NULL) { // Empty hall case
-        printf("No one in the hall yet!\n");
+      SPAM(("No one in the hall yet!\n"));
         return NULL;
     }
     struct student * s = hall->first;
@@ -267,7 +267,7 @@ void print_hall() {
     SPAM(("Printing... %s\n", hall->first));
     struct student * node = hall->first;
     while (node != NULL) {
-        printf("Student: %d (Visits: %d) ---> ", node->id, node->visits);
+      SPAM(("Student: %d (Visits: %d) ---> ", node->id, node->visits));
         node = node->next;
     }
 }
