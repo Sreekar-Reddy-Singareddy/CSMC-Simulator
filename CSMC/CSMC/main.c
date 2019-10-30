@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <semaphore.h>
 
+#include "waiting_hall.h"
 #include "csmc.h"
 #include "debug.h"
 
