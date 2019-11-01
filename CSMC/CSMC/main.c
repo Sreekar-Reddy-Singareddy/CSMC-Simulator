@@ -73,29 +73,11 @@ int main(int argc, const char * argv[]) {
     for (i=0; i<TUTORS; i++) {
         tutors[i] = malloc(sizeof(struct tutor));
     }
-    
-    // Create threads for tutors
-    // Also initialise each thread such that the
-    // execution starts from the start_tutoring function
-    t_threads = malloc(sizeof(pthread_t)*TUTORS);
-    for (i=0; i<TUTORS; i++) {
-        // Semaphore for tutor to wait for coordinator to signal about a waiting student.
-        tut_sems[i] = malloc(sizeof(sem_t));
-        sem_init(tut_sems[i], 0, 0);
-        // Create a tutor for every thread
-        struct tutor * t = malloc(sizeof(struct tutor));
-        t->id = i;
-        t->status = 0;
-        t->student = NULL;
-        assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
-    }
-    
-    // Wait for all these threads to finish and join
-    for (i=0; i<TUTORS; i++){
-        int code = pthread_join(t_threads[i], NULL);
-        SPAM(("Completed T thread(%d) %d\n",i, code));
-    }
-    
+  
+    // Create thread for coordinator
+    c_thread = malloc(sizeof(pthread_t));
+    assert(pthread_create(c_thread, NULL, coordinate_tutoring, NULL) == 0);
+  
     // Create threads for students
     // Also initialise each thread such that the
     // execution starts from the get_tutor_help function
@@ -112,10 +94,28 @@ int main(int argc, const char * argv[]) {
         assert(pthread_create(&s_threads[i], NULL, get_tutor_help, s) == 0);
     }
     
-    // Create thread for coordinator
-    c_thread = malloc(sizeof(pthread_t));
-    assert(pthread_create(c_thread, NULL, coordinate_tutoring, NULL) == 0);
-    
+    // Create threads for tutors
+    // Also initialise each thread such that the
+    // execution starts from the start_tutoring function
+    t_threads = malloc(sizeof(pthread_t)*TUTORS);
+    for (i=0; i<TUTORS; i++) {
+      // Semaphore for tutor to wait for coordinator to signal about a waiting student.                                         
+      tut_sems[i] = malloc(sizeof(sem_t));
+      sem_init(tut_sems[i], 0, 0);
+      // Create a tutor for every thread                                                                                        
+      struct tutor * t = malloc(sizeof(struct tutor));
+      t->id = i;
+      t->status = 0;
+      t->student = NULL;
+      assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
+    }
+
+    // Wait for all these threads to finish and join
+    for (i=0; i<TUTORS; i++){
+      int code = pthread_join(t_threads[i], NULL);
+      SPAM(("Completed T thread(%d) %d\n",i, code));
+    }
+
     // Wait for all these threads to finish and join
     for (i=0; i<STUDENTS; i++){
         int code = pthread_join(s_threads[i], NULL);
@@ -132,7 +132,6 @@ int main(int argc, const char * argv[]) {
 // Starting point for the exeution of tutor threads
 void * start_tutoring (void * arg) {
     struct tutor * t = (struct tutor *) arg;
-    SPAM(("Tutor: %d\n", t->id));
     /*
      0. Open the cabin and start waiting. Before waiting, update the status: tutor->status = 0; This means tutor is idle. **LOCK NEEDED ON TUTOR LIST**
      1. Wait for coordinator to let you know about students: sem_wait(tut_sems[id]); This makes tut_sems[id] = -1 until coor signals.
@@ -148,11 +147,13 @@ void * start_tutoring (void * arg) {
         pthread_mutex_lock(tutors_list_lock);
         t->status = 0;
         pthread_mutex_unlock(tutors_list_lock);
+	SPAM(("(T%d) Waiting for coordinator.\n", t->id));
         sem_wait(tut_sems[t->id]);
         
         // Going to busy state here
         pthread_mutex_lock(tutors_list_lock);
         t->status = 1;
+	SPAM(("I (T%d) Got work. Status: %d\n", t->id, t->status));
         pthread_mutex_unlock(tutors_list_lock);
         
         // Getting the student with the highest priority.
@@ -169,7 +170,7 @@ void * start_tutoring (void * arg) {
         pthread_mutex_unlock(empty_chairs_lock);
         
         // Simulation of actual tutoring
-        sleep(2);
+        sleep(1);
         SPAM(("I (T%d) am done tutoring student (S%d).\n", t->id, s->id));
         
         // Done tutoring. Let the student know the same.
@@ -212,6 +213,7 @@ void * get_tutor_help (void * student) {
             empty_chairs--;
             pthread_mutex_unlock(empty_chairs_lock);
             sem_wait(stud);
+	    s->visits++;
             active = s;
             sem_post(coor);
             SPAM(("I (S%d) have notified the coordinator and now waiting...\n", s->id));
@@ -252,14 +254,13 @@ void * coordinate_tutoring(void * arg) {
         
         // Someone has come. Add them to the waiting hall queue
         int hall_size;
-        active->visits++;
         pthread_mutex_lock(waiting_hall_lock);
-        if (active->visits <= MAX_VISITS) {
-            add_student(active);
-        }
+	//	active->visits++;
+        add_student(active);
         hall_size = hall->size;
         pthread_mutex_unlock(waiting_hall_lock);
         SPAM(("S%d added to the waiting hall. There are %d students waiting now.\n", active->id, hall_size));
+	print_hall();
         
         // Check for an idle tutor.
         // Notify the tutor only if there is someone actually waiting.
@@ -331,6 +332,7 @@ void print_hall() {
       SPAM(("Student: %d (Visits: %d) ---> ", node->id, node->visits));
         node = node->next;
     }
+    SPAM(("\n"));
 }
 
 // Adds the new student into the hall, if not full.
