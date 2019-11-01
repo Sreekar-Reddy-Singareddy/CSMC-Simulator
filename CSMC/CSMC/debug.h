@@ -9,7 +9,7 @@
 #ifndef debug_h
 #define debug_h
 
-#if 0
+#if 1
 #define SPAM(a) printf a
 #else
 #define SPAM(a) (void)0
