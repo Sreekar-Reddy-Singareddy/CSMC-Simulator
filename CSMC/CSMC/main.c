@@ -73,7 +73,7 @@ int main(int argc, const char * argv[]) {
     for (i=0; i<TUTORS; i++) {
         tutors[i] = malloc(sizeof(struct tutor));
     }
-  
+    
     // Create thread for coordinator
     c_thread = malloc(sizeof(pthread_t));
     assert(pthread_create(c_thread, NULL, coordinate_tutoring, NULL) == 0);
@@ -93,7 +93,7 @@ int main(int argc, const char * argv[]) {
         t->student = NULL;
         assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
     }
-  
+    
     // Create threads for students
     // Also initialise each thread such that the
     // execution starts from the get_tutor_help function
@@ -115,11 +115,11 @@ int main(int argc, const char * argv[]) {
         int code = pthread_join(s_threads[i], NULL);
         SPAM(("Completed S thread(%d) %d\n",i, code));
     }
-
+    
     // Wait for all tutor threads to finish and join
     for (i=0; i<TUTORS; i++){
-      int code = pthread_join(t_threads[i], NULL);
-      SPAM(("Completed T thread(%d) %d\n",i, code));
+        int code = pthread_join(t_threads[i], NULL);
+        SPAM(("Completed T thread(%d) %d\n",i, code));
     }
     
     // Wait for coordinator thread to finish
@@ -148,13 +148,13 @@ void * start_tutoring (void * arg) {
         pthread_mutex_lock(tutors_list_lock);
         t->status = 0;
         pthread_mutex_unlock(tutors_list_lock);
-	SPAM(("(T%d) Waiting for coordinator.\n", t->id));
+        SPAM(("(T%d) Waiting for coordinator.\n", t->id));
         sem_wait(tut_sems[t->id]);
         
         // Going to busy state here
         pthread_mutex_lock(tutors_list_lock);
         t->status = 1;
-	SPAM(("I (T%d) Got work. Status: %d\n", t->id, t->status));
+        SPAM(("I (T%d) Got work. Status: %d\n", t->id, t->status));
         pthread_mutex_unlock(tutors_list_lock);
         
         // Getting the student with the highest priority.
@@ -213,8 +213,8 @@ void * get_tutor_help (void * student) {
             // Found a chair and sat. Now notify the coordinator. Other students wait.
             empty_chairs--;
             pthread_mutex_unlock(empty_chairs_lock);
+            s->visits++;
             sem_wait(stud);
-	    s->visits++;
             active = s;
             sem_post(coor);
             SPAM(("I (S%d) have notified the coordinator and now waiting...\n", s->id));
@@ -256,12 +256,11 @@ void * coordinate_tutoring(void * arg) {
         // Someone has come. Add them to the waiting hall queue
         int hall_size;
         pthread_mutex_lock(waiting_hall_lock);
-	//	active->visits++;
         add_student(active);
         hall_size = hall->size;
         pthread_mutex_unlock(waiting_hall_lock);
         SPAM(("S%d added to the waiting hall. There are %d students waiting now.\n", active->id, hall_size));
-	print_hall();
+        print_hall();
         
         // Check for an idle tutor.
         // Notify the tutor only if there is someone actually waiting.
@@ -294,7 +293,7 @@ void * coordinate_tutoring(void * arg) {
 // Do the programming for 2ms and come back
 void do_programming (void) {
     SPAM(("Programming...\n"));
-    sleep(1);
+    sleep(2);
 }
 
 // Inserts a new student (new) in the hall, after a given student (prev).
@@ -311,9 +310,9 @@ void insertBefore(struct student * prev, struct student * new) {
 
 // Removes the first student in the hall (hall->first), if any.
 struct student * remove_student() {
-//  SPAM(("\nRemoving student\n"));
+    //  SPAM(("\nRemoving student\n"));
     if (hall->first == NULL) { // Empty hall case
-      SPAM(("No one in the hall yet!\n"));
+        SPAM(("No one in the hall yet!\n"));
         return NULL;
     }
     struct student * s = hall->first;
@@ -327,10 +326,10 @@ struct student * remove_student() {
 
 // Prints the students waiting in hall currently.
 void print_hall() {
-//    SPAM(("Printing... %s\n", hall->first));
+    //    SPAM(("Printing... %s\n", hall->first));
     struct student * node = hall->first;
     while (node != NULL) {
-      SPAM(("Student: %d (Visits: %d) ---> ", node->id, node->visits));
+        SPAM(("Student: %d (Visits: %d) ---> ", node->id, node->visits));
         node = node->next;
     }
     SPAM(("\n"));
@@ -388,8 +387,9 @@ struct tutor * get_idle_tutor () {
     for (i=0; i<TUTORS; i++) {
         if (tutors[i]->status == 0) {
             // This is the first idle tutor in the list.
+            struct tutor * idle_tutor = tutors[i];
             pthread_mutex_unlock(tutors_list_lock);
-            return tutors[i];
+            return idle_tutor;
         }
     }
     pthread_mutex_unlock(tutors_list_lock);
