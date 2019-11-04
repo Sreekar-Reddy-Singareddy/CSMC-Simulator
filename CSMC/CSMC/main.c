@@ -77,6 +77,22 @@ int main(int argc, const char * argv[]) {
     // Create thread for coordinator
     c_thread = malloc(sizeof(pthread_t));
     assert(pthread_create(c_thread, NULL, coordinate_tutoring, NULL) == 0);
+    
+    // Create threads for tutors
+    // Also initialise each thread such that the
+    // execution starts from the start_tutoring function
+    t_threads = malloc(sizeof(pthread_t)*TUTORS);
+    for (i=0; i<TUTORS; i++) {
+        // Semaphore for tutor to wait for coordinator to signal about a waiting student.
+        tut_sems[i] = malloc(sizeof(sem_t));
+        sem_init(tut_sems[i], 0, 0);
+        // Create a tutor for every thread
+        struct tutor * t = malloc(sizeof(struct tutor));
+        t->id = i;
+        t->status = 0;
+        t->student = NULL;
+        assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
+    }
   
     // Create threads for students
     // Also initialise each thread such that the
@@ -94,36 +110,21 @@ int main(int argc, const char * argv[]) {
         assert(pthread_create(&s_threads[i], NULL, get_tutor_help, s) == 0);
     }
     
-    // Create threads for tutors
-    // Also initialise each thread such that the
-    // execution starts from the start_tutoring function
-    t_threads = malloc(sizeof(pthread_t)*TUTORS);
-    for (i=0; i<TUTORS; i++) {
-      // Semaphore for tutor to wait for coordinator to signal about a waiting student.                                         
-      tut_sems[i] = malloc(sizeof(sem_t));
-      sem_init(tut_sems[i], 0, 0);
-      // Create a tutor for every thread                                                                                        
-      struct tutor * t = malloc(sizeof(struct tutor));
-      t->id = i;
-      t->status = 0;
-      t->student = NULL;
-      assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
-    }
-
-    // Wait for all these threads to finish and join
-    for (i=0; i<TUTORS; i++){
-      int code = pthread_join(t_threads[i], NULL);
-      SPAM(("Completed T thread(%d) %d\n",i, code));
-    }
-
-    // Wait for all these threads to finish and join
+    // Wait for all student threads to finish and join
     for (i=0; i<STUDENTS; i++){
         int code = pthread_join(s_threads[i], NULL);
         SPAM(("Completed S thread(%d) %d\n",i, code));
     }
+
+    // Wait for all tutor threads to finish and join
+    for (i=0; i<TUTORS; i++){
+      int code = pthread_join(t_threads[i], NULL);
+      SPAM(("Completed T thread(%d) %d\n",i, code));
+    }
     
-    // Wait for all these threads to finish and join
+    // Wait for coordinator thread to finish
     pthread_join(*c_thread, NULL);
+    
     SPAM(("Completed C thread.\n"));
     
     return 0;
