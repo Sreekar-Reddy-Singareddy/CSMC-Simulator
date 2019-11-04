@@ -13,6 +13,7 @@ struct student {
     int id;
     int status;
     int visits;
+    int tutor_id;
     struct student * next; // Pointer to the next student in the hall
 };
 

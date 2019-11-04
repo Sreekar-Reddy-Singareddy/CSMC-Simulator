@@ -21,7 +21,7 @@
 #define STUDENTS 4
 #define TUTORS 2
 #define CHAIRS 3
-#define MAX_VISITS 5
+#define MAX_VISITS 3
 #define TEST_MODE 0
 
 struct student * queue [CHAIRS];
@@ -106,6 +106,7 @@ int main(int argc, const char * argv[]) {
         s->id = i;
         s->status = 0;
         s->visits = 0;
+        s->tutor_id = 0;
         assert(pthread_create(&s_threads[i], NULL, get_tutor_help, s) == 0);
     }
     
@@ -171,6 +172,8 @@ void * start_tutoring (void * arg) {
         
         // Simulation of actual tutoring
         sleep(1);
+        printf("Student %d tutored by Tutor %d. Students tutored now = ??. Total sessions tutored = ??.\n",
+               t->student->id, t->id);
         SPAM(("I (T%d) am done tutoring student (S%d).\n", t->id, s->id));
         
         // Done tutoring. Let the student know the same.
@@ -205,6 +208,7 @@ void * get_tutor_help (void * student) {
             // No chairs. Come back later.
             pthread_mutex_unlock(empty_chairs_lock);
             SPAM(("Oops! No chairs. I (S%d) am going back...\n", s->id));
+            printf("Student %d found no empty chair. Will try again later.\n", s->id);
             do_programming();
             continue;
         }
@@ -217,10 +221,12 @@ void * get_tutor_help (void * student) {
             active = s;
             sem_post(coor);
             SPAM(("I (S%d) have notified the coordinator and now waiting...\n", s->id));
+            printf("Student %d takes a seat. Empty Chairs = %d.\n", s->id, empty_chairs);
             
             // Now you told coor. Wait until you are called and completed getting the help.
             sem_wait(stu_sems[s->id]);
             SPAM(("I (S%d) have gotten the help! My %d visits are successful!\n", s->id, s->visits));
+            printf("Student %d received help from Tutor %d.\n", s->id, s->tutor_id);
             
             // You are done with getting help. You can leave now.
             do_programming();
@@ -260,8 +266,9 @@ void * coordinate_tutoring(void * arg) {
             add_student(active);
             hall_size = hall->size;
             pthread_mutex_unlock(waiting_hall_lock);
+            printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
+                   active->id, MAX_VISITS-active->visits, hall_size, MAX_VISITS*STUDENTS-total);
             SPAM(("S%d added to the waiting hall. There are %d students waiting now.\n", active->id, hall_size));
-            print_hall();
         }
         
         // Check for an idle tutor.
@@ -273,6 +280,7 @@ void * coordinate_tutoring(void * arg) {
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
             // I will assume he has been served.
+            active->tutor_id = idle_tutor->id;
             sem_post(tut_sems[idle_tutor->id]);
             total--;
         }
@@ -417,7 +425,7 @@ void test_queue() {
     hall->last = NULL;
     hall->size = 0;
     if (hall->first == NULL) {
-        printf("No one in the hall yet!\n");
+        SPAM(("No one in the hall yet!\n"));
     }
     
     // Simulate Case 1 - Empty hall
