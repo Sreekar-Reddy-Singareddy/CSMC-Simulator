@@ -18,9 +18,9 @@
 #include "csmc.h"
 #include "debug.h"
 
-#define STUDENTS 7
-#define TUTORS 3
-#define CHAIRS 5
+#define STUDENTS 4
+#define TUTORS 2
+#define CHAIRS 3
 #define MAX_VISITS 5
 #define TEST_MODE 0
 
@@ -72,6 +72,9 @@ int main(int argc, const char * argv[]) {
     // Initialising the list for tutors
     for (i=0; i<TUTORS; i++) {
         tutors[i] = malloc(sizeof(struct tutor));
+	tutors[i]->id = i;
+	tutors[i]->status = 0;
+	tutors[i]->student = NULL;
     }
     
     // Create thread for coordinator
@@ -86,12 +89,8 @@ int main(int argc, const char * argv[]) {
         // Semaphore for tutor to wait for coordinator to signal about a waiting student.
         tut_sems[i] = malloc(sizeof(sem_t));
         sem_init(tut_sems[i], 0, 0);
-        // Create a tutor for every thread
-        struct tutor * t = malloc(sizeof(struct tutor));
-        t->id = i;
-        t->status = 0;
-        t->student = NULL;
-        assert(pthread_create(&t_threads[i], NULL, start_tutoring, t) == 0);
+	// Pass the tutor for every thread
+        assert(pthread_create(&t_threads[i], NULL, start_tutoring, tutors[i]) == 0);
     }
     
     // Create threads for students
@@ -148,13 +147,13 @@ void * start_tutoring (void * arg) {
         pthread_mutex_lock(tutors_list_lock);
         t->status = 0;
         pthread_mutex_unlock(tutors_list_lock);
-        SPAM(("(T%d) Waiting for coordinator.\n", t->id));
+        SPAM(("(T%d) Waiting for coordinator. Address: %p \n", t->id, t));
         sem_wait(tut_sems[t->id]);
         
         // Going to busy state here
         pthread_mutex_lock(tutors_list_lock);
         t->status = 1;
-        SPAM(("I (T%d) Got work. Status: %d\n", t->id, t->status));
+        SPAM(("I (T%d) Got work. Status: %d Address: %p\n", t->id, t->status, t));
         pthread_mutex_unlock(tutors_list_lock);
         
         // Getting the student with the highest priority.
@@ -163,7 +162,7 @@ void * start_tutoring (void * arg) {
         pthread_mutex_unlock(waiting_hall_lock);
         if (s == NULL) continue;
         t->student = s;
-        SPAM(("I (T%d) is tutoring student (S%d).\n", t->id, s->id));
+        SPAM(("I (T%d) is tutoring student (S%d). Status (%d) Address: %p\n", t->id, s->id, t->status, t));
         
         // The student has now moved from the hall to tutor cabin.
         pthread_mutex_lock(empty_chairs_lock); // IS THIS LOCK NEEDED?
@@ -267,7 +266,7 @@ void * coordinate_tutoring(void * arg) {
         // Else there is no point in notifying.
         struct tutor * idle_tutor = get_idle_tutor();
         if (idle_tutor != NULL && hall_size > 0) {
-            SPAM(("T%d can help you out. Please proceed to the cabin.\n", idle_tutor->id));
+	  SPAM(("T%d can help you out. Please proceed to the cabin. Address: %p\n", idle_tutor->id, idle_tutor));
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
             // I will assume he has been served.
@@ -384,6 +383,9 @@ void add_student(struct student * new) {
 struct tutor * get_idle_tutor () {
     int i;
     pthread_mutex_lock(tutors_list_lock);
+    for (i=0; i<TUTORS; i++){
+      SPAM(("****** Checking tutor T%d, Status: %d Address: %p ******\n", tutors[i]->id, tutors[i]->status, tutors[i]));
+    }
     for (i=0; i<TUTORS; i++) {
         if (tutors[i]->status == 0) {
             // This is the first idle tutor in the list.
