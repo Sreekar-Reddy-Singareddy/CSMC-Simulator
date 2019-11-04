@@ -314,11 +314,12 @@ struct student * remove_student() {
         SPAM(("No one in the hall yet!\n"));
         return NULL;
     }
-    struct student * s = hall->first;
+    struct student * s = hall->first; // 's' is gonna be removed
     hall->first = hall->first->next;
     if (hall->first == NULL) { // Only 1 student was there and removed
         hall->last = NULL;
     }
+    SPAM(("Removing Student's Next: %p\n", s->next));
     hall->size--;
     return s;
 }
