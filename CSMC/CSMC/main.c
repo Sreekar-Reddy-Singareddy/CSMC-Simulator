@@ -196,7 +196,7 @@ void * get_tutor_help (void * student) {
      9. Wait until tutoring is done: sem_wait(done_tutoring); Makes the stud wait here until signal sent from tutor.
      10. Do programming. Come back to CSMC again later: do_programmming(); continue to while loop; This starts the process again from step 1.
      */
-    while (s->visits <= MAX_VISITS) {
+    while (s->visits < MAX_VISITS) {
         SPAM(("Hey, I (S%d) need some tutor help!\n", s->id));
         
         // Entered the CSMC for help.
@@ -226,7 +226,8 @@ void * get_tutor_help (void * student) {
             do_programming();
         }
     }
-    
+    active = NULL;
+    sem_post(coor);
     SPAM(("I (S%d) came here MAX number of times.\n",s->id));
     
     return NULL;
@@ -254,7 +255,7 @@ void * coordinate_tutoring(void * arg) {
         
         // Someone has come. Add them to the waiting hall queue
         int hall_size;
-        if (active->visits <= MAX_VISITS) {
+        if (active != NULL) {
             pthread_mutex_lock(waiting_hall_lock);
             add_student(active);
             hall_size = hall->size;
@@ -283,7 +284,7 @@ void * coordinate_tutoring(void * arg) {
     
     // Close the CSMC once all students are served.
     is_csmc_open = 0;
-    SPAM(("CSMC Closed.\n"));
+    SPAM(("CSMC Closing time. Everyone leave...\n"));
     
     // Notify all the waiting tutors, if any, to STOP!
     notify_all();
@@ -321,6 +322,7 @@ struct student * remove_student() {
     if (hall->first == NULL) { // Only 1 student was there and removed
         hall->last = NULL;
     }
+    s->next = NULL;
     SPAM(("Removing Student's Next: %p\n", s->next));
     hall->size--;
     return s;
