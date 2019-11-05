@@ -20,7 +20,7 @@
 
 #define TEST_MODE 0
 
-struct tutor * tutors [];
+struct tutor * tutors [2];
 pthread_t * t_threads;
 pthread_t * s_threads;
 pthread_t * c_thread;
@@ -35,7 +35,7 @@ int is_csmc_open = 1;
 int STUDENTS, TUTORS, CHAIRS, MAX_VISITS;
 
 
-sem_t * stud, * coor, * done_tutoring, * tut_sems[], * stu_sems[];
+sem_t * stud, * coor, * done_tutoring, * tut_sems[2], * stu_sems[4];
 
 // TEST_MODE
 struct waiting_hall * hall;
@@ -292,9 +292,7 @@ void * coordinate_tutoring(void * arg) {
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
             // I will assume he has been served.
-            Debug(("Active student: %p\n", active));
             active->tutor_id = idle_tutor->id; // Let the student know his tutor's ID
-            //	    active = NULL; // I am done with this user
             sem_post(tut_sems[idle_tutor->id]);
             total--;
         }
