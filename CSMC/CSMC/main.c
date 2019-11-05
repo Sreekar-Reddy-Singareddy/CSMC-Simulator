@@ -18,18 +18,13 @@
 #include "csmc.h"
 #include "debug.h"
 
-#define STUDENTS 4
-#define TUTORS 2
-#define CHAIRS 3
-#define MAX_VISITS 3
 #define TEST_MODE 0
 
-struct student * queue [CHAIRS];
-struct tutor * tutors [TUTORS];
+struct tutor * tutors [];
 pthread_t * t_threads;
 pthread_t * s_threads;
 pthread_t * c_thread;
-int empty_chairs = CHAIRS;
+int empty_chairs;
 struct student * active;
 pthread_mutex_t * active_stud_lock;
 pthread_mutex_t * waiting_hall_lock;
@@ -37,7 +32,10 @@ pthread_mutex_t * tutors_list_lock;
 pthread_mutex_t * empty_chairs_lock;
 int is_csmc_open = 1;
 
-sem_t * stud, * coor, * done_tutoring, * tut_sems[TUTORS], * stu_sems[STUDENTS];
+int STUDENTS, TUTORS, CHAIRS, MAX_VISITS;
+
+
+sem_t * stud, * coor, * done_tutoring, * tut_sems[], * stu_sems[];
 
 // TEST_MODE
 struct waiting_hall * hall;
@@ -45,13 +43,20 @@ void test_queue(void);
 
 int main(int argc, const char * argv[]) {
     if (TEST_MODE) {
-        test_queue();
+        int i;
+        
         return 0;
     }
-
+    
     //    freopen("output.txt", "w", stdout);
     
     // All memory allocations
+    STUDENTS = atoi(argv[1]);
+    TUTORS = atoi(argv[2]);
+    CHAIRS = atoi(argv[3]);
+    MAX_VISITS = atoi(argv[4]);
+    empty_chairs = CHAIRS;
+    
     stud = malloc(sizeof(sem_t));
     coor = malloc(sizeof(sem_t));
     active = malloc(sizeof(struct student));
@@ -79,7 +84,7 @@ int main(int argc, const char * argv[]) {
         tutors[i] = malloc(sizeof(struct tutor));
         tutors[i]->id = i;
         tutors[i]->status = 0;
-	tutors[i]->number_tutored = 0;
+        tutors[i]->number_tutored = 0;
         tutors[i]->student = NULL;
     }
     
@@ -169,7 +174,7 @@ void * start_tutoring (void * arg) {
         pthread_mutex_unlock(waiting_hall_lock);
         if (s == NULL) continue;
         t->student = s;
-	t->number_tutored++; // Increase the number of students tutored.
+        t->number_tutored++; // Increase the number of students tutored.
         SPAM(("I (T%d) is tutoring student (S%d). Status (%d) Address: %p\n", t->id, s->id, t->status, t));
         
         // The student has now moved from the hall to tutor cabin.
@@ -287,9 +292,9 @@ void * coordinate_tutoring(void * arg) {
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
             // I will assume he has been served.
-	    Debug(("Active student: %p\n", active));
+            Debug(("Active student: %p\n", active));
             active->tutor_id = idle_tutor->id; // Let the student know his tutor's ID
-	    //	    active = NULL; // I am done with this user
+            //	    active = NULL; // I am done with this user
             sem_post(tut_sems[idle_tutor->id]);
             total--;
         }
