@@ -35,7 +35,7 @@ int is_csmc_open = 1;
 int STUDENTS, TUTORS, CHAIRS, MAX_VISITS;
 
 
-sem_t * stud, * coor, * done_tutoring, * tut_sems[2], * stu_sems[4];
+sem_t * stud, * coor, * done_tutoring, * tut_sems[2], * stu_sems[8];
 struct timespec timer;
 
 // TEST_MODE
@@ -198,7 +198,7 @@ void * start_tutoring (void * arg) {
 // Starting point for the execution of student threads
 void * get_tutor_help (void * student) {
     struct student * s = (struct student *) student;
-    while (s->visits < MAX_VISITS) {
+    while (s->visits < MAX_VISITS || is_csmc_open) {
         Debug(("Hey, I (S%d) need some tutor help!\n", s->id));
         
         // Entered the CSMC for help.
@@ -206,6 +206,8 @@ void * get_tutor_help (void * student) {
         if (empty_chairs <= 0) {
             // No chairs. Come back later.
             pthread_mutex_unlock(empty_chairs_lock);
+	    sem_wait(stud);
+	    sem_post(coor);
             SPAM(("Oops! No chairs. I (S%d) am going back...\n", s->id));
             printf("Student %d found no empty chair. Will try again later.\n", s->id);
             do_programming();
@@ -246,14 +248,17 @@ void * coordinate_tutoring(void * arg) {
         // Someone has come. Add them to the waiting hall queue
         int hall_size, student_added = 0;
         pthread_mutex_lock(waiting_hall_lock);
-        if (active != NULL) {
+        if (active != NULL && active->visits <= MAX_VISITS) {
             add_student(active);
             student_added = 1;
             hall_size = hall->size;
             printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
                    active->id, MAX_VISITS-active->visits, hall_size, MAX_VISITS*STUDENTS-total+1);
+	    active = NULL;
         }
-        active = NULL;
+	else {
+	  student_added = 0;
+	}
         pthread_mutex_unlock(waiting_hall_lock);
         
         
@@ -403,6 +408,9 @@ void notify_all () {
     int i;
     for (i=0; i<TUTORS; i++){
         sem_post(tut_sems[i]);
+    }
+    for (i=0; i<STUDENTS; i++){
+      sem_post(stu_sems[i]);
     }
 }
 
