@@ -336,7 +336,9 @@ void print_hall() {
 }
 
 // Adds the new student into the hall, if not full.
+
 void add_student(struct student * new) {
+    new->next = NULL;
     if (hall->size == CHAIRS) { // CASE 4
         SPAM(("C4: Cannot add. Already full.\n"));
         return;
