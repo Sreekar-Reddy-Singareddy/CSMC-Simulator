@@ -147,16 +147,6 @@ int main(int argc, const char * argv[]) {
 // Starting point for the exeution of tutor threads
 void * start_tutoring (void * arg) {
     struct tutor * t = (struct tutor *) arg;
-    /*
-     0. Open the cabin and start waiting. Before waiting, update the status: tutor->status = 0; This means tutor is idle. **LOCK NEEDED ON TUTOR LIST**
-     1. Wait for coordinator to let you know about students: sem_wait(tut_sems[id]); This makes tut_sems[id] = -1 until coor signals.
-     2. Keep waiting until coordinator signals tut_sems[id] to continue: spinning
-     3. After signalled (makes tut_sems[id] = 0), update the status: tutot->status = 1; This means tutor is busy. **LOCK NEEDED ON TUTOR LIST**
-     4. Get the 'first' student from the waiting hall: remove_student() -> student; This is the student you need to tutor. **LOCK NEEDED ON WAITING_HALL**
-     5. Sleep for 2 sec (tutoring time) and then make 'student'->'tutor' as NULL: student->tutor = NULL; Because student is done getting help.
-     6. Done for now. Continue waiting for coordinator signal: sem_wait(tut_sems[id]); Makes tut_sems[id] = -1 again.
-     */
-    
     while (is_csmc_open) {
         // Going to idle state here
         pthread_mutex_lock(tutors_list_lock);
@@ -172,15 +162,15 @@ void * start_tutoring (void * arg) {
         pthread_mutex_unlock(tutors_list_lock);
         
         // Getting the student with the highest priority.
-	print_hall();
-	Debug(("I (T%d) am going to remove the first student in hall.\n", t->id));
+        print_hall();
+        Debug(("I (T%d) am going to remove the first student in hall.\n", t->id));
         pthread_mutex_lock(waiting_hall_lock);
         struct student * s = remove_student();
-	Debug(("Removed Student Address: %p\n", s));
+        Debug(("Removed Student Address: %p\n", s));
         pthread_mutex_unlock(waiting_hall_lock);
-	if (s == NULL) continue;
-	print_hall();
-	Debug(("Removed Student by T%d is %p (S%d).\n", t->id, s, s->id));
+        if (s == NULL) continue;
+        print_hall();
+        Debug(("Removed Student by T%d is %p (S%d).\n", t->id, s, s->id));
         t->student = s;
         t->number_tutored++; // Increase the number of students tutored.
         Debug(("I (T%d) is tutoring student (S%d). Visits (%d)\n", t->id, s->id, s->visits));
@@ -207,18 +197,6 @@ void * start_tutoring (void * arg) {
 // Starting point for the execution of student threads
 void * get_tutor_help (void * student) {
     struct student * s = (struct student *) student;
-    /*
-     1. Student enters the CSMC as 's'.
-     2. Gets a lock on empty chairs as they entered first: lock(empty_chairs)
-     3. Checks for empty chairs > 0. If not, just release the lock and leave CSMC: unlock(empty_chairs); do_programming(); continue;
-     4. If available, reduce the chairs by 1: empty_chairs--; Because a chair is now filled.
-     5. Release the lock on empty_chairs now: unlock(empty_chairs)
-     6. Wait on 'stud' semaphore until the 'new' student is added to the waiting hall: sem_wait(stud); this makes next students wait outside CSMC.
-     7. Assign 's' to 'new' (global): new = s; this updates the currently interacting student with coor.
-     8. Signal the 'coor' that 'new' has arrived: sem_post(coor); this make coor = 1.
-     9. Wait until tutoring is done: sem_wait(done_tutoring); Makes the stud wait here until signal sent from tutor.
-     10. Do programming. Come back to CSMC again later: do_programmming(); continue to while loop; This starts the process again from step 1.
-     */
     while (s->visits < MAX_VISITS) {
         Debug(("Hey, I (S%d) need some tutor help!\n", s->id));
         
@@ -250,47 +228,32 @@ void * get_tutor_help (void * student) {
             do_programming();
         }
     }
-   Debug(("I (S%d) came here MAX number of times.\n",s->id));
+    Debug(("I (S%d) came here MAX number of times.\n",s->id));
     
     return NULL;
 }
 
 // Starting point for the execution of coordintor thread
 void * coordinate_tutoring(void * arg) {
-    /*
-     1. Open CSMC and wait for students to come: sem_wait(coor); This makes coor = -1 until some student signals.
-     2. Keep waiting until some student signals coor to continue: spinning
-     3. Get the student who has signalled coor: use some global variable(new)
-     4. Add this student to the waiting hall: add_student(new); This adds the student to the hall. **LOCK NEEDED ON WAITING_HALL**
-     5. Signal that next student can come and wait now: sem_post(stud); this lets the next student come inside CSMC.
-     6. Check the tutors list and see if any tutor is idle: get_idle_tutor() -> tutor (or NULL) **LOCK NEEDED ON TUTOR LIST**
-     7. If 'tutor' is null (everyone busy), then continue and wait for next student: loop -> sem_wait(coor)
-     8. Else, get the 'id' of the tutor and signal the corresponding semaphore: sem_post(tut_sems[id])
-     9. This completes the job of coor for now. He must again repeat the cycle from step 1 through 7: continue while loop
-     */
     int total = MAX_VISITS*STUDENTS;
     SPAM(("CSMC Opened.\n"));
     
     while (total > 0) {
         // Wait for a student to come in
-      Debug(("Timer: %ld\n", (long)timer.tv_sec));
-      sem_timedwait(coor, &timer);
-      //      if (errno != 0){
-      //fprintf(stderr, "Error: %s\n", strerror(errno));
-      //}
+        sem_timedwait(coor, &timer);
         
         // Someone has come. Add them to the waiting hall queue
-        int hall_size;
-       
-            pthread_mutex_lock(waiting_hall_lock);
-	    if (active != NULL) {
+        int hall_size, student_added = 0;
+        pthread_mutex_lock(waiting_hall_lock);
+        if (active != NULL) {
             add_student(active);
-	    hall_size = hall->size;
-	    printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
+            student_added = 1;
+            hall_size = hall->size;
+            printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
                    active->id, MAX_VISITS-active->visits, hall_size, MAX_VISITS*STUDENTS-total+1);
-	    }
-	    active = NULL;
-            pthread_mutex_unlock(waiting_hall_lock);
+        }
+        active = NULL;
+        pthread_mutex_unlock(waiting_hall_lock);
         
         
         // Check for an idle tutor.
@@ -298,17 +261,20 @@ void * coordinate_tutoring(void * arg) {
         // Else there is no point in notifying.
         struct tutor * idle_tutor = get_idle_tutor();
         if (idle_tutor != NULL && hall_size > 0) {
-	  Debug(("Idle tutor found - T%d.\n", idle_tutor->id));
+            Debug(("Idle tutor found - T%d.\n", idle_tutor->id));
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
             // I will assume he has been served.
             sem_post(tut_sems[idle_tutor->id]);
             total--;
+            sem_post(stud);
         }
         else {
             Debug(("All tutors are busy right now. Please have a seat.\n"));
+            if (student_added) {
+                sem_post(stud);
+            }
         }
-        sem_post(stud);
     }
     
     // Close the CSMC once all students are served.
