@@ -275,6 +275,7 @@ void * coordinate_tutoring(void * arg) {
                 sem_post(stud);
             }
         }
+        student_added = 0;
     }
     
     // Close the CSMC once all students are served.
