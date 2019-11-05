@@ -187,6 +187,7 @@ void * start_tutoring (void * arg) {
         SPAM(("I (T%d) am done tutoring student (S%d).\n", t->id, s->id));
         
         // Done tutoring. Let the student know the same.
+        t->student->tutor_id = t->id;
         int id = t->student->id;
         t->student = NULL;
         sem_post(stu_sems[id]);
@@ -240,7 +241,7 @@ void * coordinate_tutoring(void * arg) {
     
     while (total > 0) {
         // Wait for a student to come in
-        sem_timedwait(coor, &timer);
+        sem_wait(coor);
         
         // Someone has come. Add them to the waiting hall queue
         int hall_size, student_added = 0;
@@ -267,15 +268,11 @@ void * coordinate_tutoring(void * arg) {
             // I will assume he has been served.
             sem_post(tut_sems[idle_tutor->id]);
             total--;
-            sem_post(stud);
         }
         else {
             Debug(("All tutors are busy right now. Please have a seat.\n"));
-            if (student_added) {
-                sem_post(stud);
-            }
         }
-        student_added = 0;
+        sem_post(stud);
     }
     
     // Close the CSMC once all students are served.
