@@ -20,6 +20,7 @@ struct student {
 struct tutor {
     int id;
     int status;
+  int number_tutored;
     struct student * student; // Student being tutored by this tutor
 };
 
