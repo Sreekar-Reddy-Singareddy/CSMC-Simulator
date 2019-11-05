@@ -35,7 +35,8 @@ int is_csmc_open = 1;
 int STUDENTS, TUTORS, CHAIRS, MAX_VISITS;
 
 
-sem_t * stud, * coor, * done_tutoring, * tut_sems[2], * stu_sems[5];
+sem_t * stud, * coor, * done_tutoring, * tut_sems[2], * stu_sems[4];
+struct timespec timer;
 
 // TEST_MODE
 struct waiting_hall * hall;
@@ -56,7 +57,9 @@ int main(int argc, const char * argv[]) {
     CHAIRS = atoi(argv[3]);
     MAX_VISITS = atoi(argv[4]);
     empty_chairs = CHAIRS;
-    
+    time_t t = 1;
+    timer.tv_sec = t;
+    timer.tv_nsec = 0;
     stud = malloc(sizeof(sem_t));
     coor = malloc(sizeof(sem_t));
     active = malloc(sizeof(struct student));
@@ -173,11 +176,11 @@ void * start_tutoring (void * arg) {
 	Debug(("I (T%d) am going to remove the first student in hall.\n", t->id));
         pthread_mutex_lock(waiting_hall_lock);
         struct student * s = remove_student();
-	s->tutor_id = t->id; // Assign the tutor's ID to the student
+	Debug(("Removed Student Address: %p\n", s));
         pthread_mutex_unlock(waiting_hall_lock);
+	if (s == NULL) continue;
 	print_hall();
 	Debug(("Removed Student by T%d is %p (S%d).\n", t->id, s, s->id));
-        if (s == NULL) continue;
         t->student = s;
         t->number_tutored++; // Increase the number of students tutored.
         Debug(("I (T%d) is tutoring student (S%d). Visits (%d)\n", t->id, s->id, s->visits));
@@ -270,26 +273,31 @@ void * coordinate_tutoring(void * arg) {
     
     while (total > 0) {
         // Wait for a student to come in
-        sem_wait(coor);
+      Debug(("Timer: %ld\n", (long)timer.tv_sec));
+      sem_timedwait(coor, &timer);
+      //      if (errno != 0){
+      //fprintf(stderr, "Error: %s\n", strerror(errno));
+      //}
         
         // Someone has come. Add them to the waiting hall queue
         int hall_size;
-        if (active != NULL) {
+       
             pthread_mutex_lock(waiting_hall_lock);
+	    if (active != NULL) {
             add_student(active);
-            hall_size = hall->size;
-            pthread_mutex_unlock(waiting_hall_lock);
-            printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
+	    hall_size = hall->size;
+	    printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
                    active->id, MAX_VISITS-active->visits, hall_size, MAX_VISITS*STUDENTS-total+1);
-            SPAM(("S%d added to the waiting hall. There are %d students waiting now.\n", active->id, hall_size));
-        }
+	    }
+	    active = NULL;
+            pthread_mutex_unlock(waiting_hall_lock);
+        
         
         // Check for an idle tutor.
         // Notify the tutor only if there is someone actually waiting.
         // Else there is no point in notifying.
         struct tutor * idle_tutor = get_idle_tutor();
-	Debug(("Idle tutor: %p found for S%d (V:%d)\n", idle_tutor, active->id, active->visits));
-        if (idle_tutor != NULL && hall_size > 0 && active != NULL) {
+        if (idle_tutor != NULL && hall_size > 0) {
 	  Debug(("Idle tutor found - T%d.\n", idle_tutor->id));
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
@@ -298,7 +306,6 @@ void * coordinate_tutoring(void * arg) {
             total--;
         }
         else {
-	  usleep(20000);
             Debug(("All tutors are busy right now. Please have a seat.\n"));
         }
         sem_post(stud);
