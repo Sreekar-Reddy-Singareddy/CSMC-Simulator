@@ -29,7 +29,8 @@ void * start_tutoring (void *); // Start point for the tutor threads
 void * get_tutor_help (void *); // Start point for the student threads
 void * coordinate_tutoring (void *); // Start point for the coordinator thread
 void do_programming (void);
-struct tutor * get_idle_tutor(); // Searches and get an idle tutor or returns NULL
+struct tutor * get_idle_tutor(void); // Searches and get an idle tutor or returns NULL
+int get_current_tutoring_students (void);
 void notify_all(); // Notify all the waiting threads to continue
 
 #endif /* csmc_h */

@@ -1,10 +1,10 @@
-//
-//  main.c
 //  CSMC
 //
 //  Created by Sreekar on 24/10/19.
-//  Copyright © 2019 Sreekar. All rights reserved.
+//  Copyright © 2019 Sreekar. All rights reserved.                                                                               
 //
+
+// "-lpthread" flag must be used while compiling main.c
 
 #include <stdio.h>
 #include <pthread.h>
@@ -55,12 +55,23 @@ int main(int argc, const char * argv[]) {
         }
         return 0;
     }
-    
-    // All memory allocations
+
+    // Error checking
+    if (argc != 5) {
+      fprintf(stderr, "Error occured. Not enough arguments (must be exactly 5).\n");
+      exit(-1);
+    }
+
+    // Command line arguments
     STUDENTS = atoi(argv[1]);
     TUTORS = atoi(argv[2]);
     CHAIRS = atoi(argv[3]);
     MAX_VISITS = atoi(argv[4]);
+    if (STUDENTS <= 0 || TUTORS <= 0 || CHAIRS <= 0 || MAX_VISITS <= 0){
+      fprintf(stderr, "Students, Tutors, Chairs, Visits must all be greater than 0.\n");
+      exit(-1);
+    }
+
     empty_chairs = CHAIRS;
     time_t t = 1;
     timer.tv_sec = t;
@@ -188,9 +199,9 @@ void * start_tutoring (void * arg) {
         pthread_mutex_unlock(empty_chairs_lock);
         
         // Simulation of actual tutoring
-        usleep(2000);
+        usleep(200);
         printf("Student %d tutored by Tutor %d. Students tutored now = %d. Total sessions tutored = %d.\n",
-               t->student->id, t->id, t->number_tutored, served);
+               t->student->id, t->id, get_current_tutoring_students(), served);
         SPAM(("I (T%d) am done tutoring student (S%d).\n", t->id, s->id));
         
         // Done tutoring. Let the student know the same.
@@ -230,12 +241,12 @@ void * get_tutor_help (void * student) {
         else {
             // Found a chair and sat. Now notify the coordinator. Other students wait.
             empty_chairs--;
+	    printf("Student %d takes a seat. Empty Chairs = %d.\n", s->id, empty_chairs);
             pthread_mutex_unlock(empty_chairs_lock);
             s->visits++;
             sem_wait(stud);
             active = s;
             sem_post(coor);
-            printf("Student %d takes a seat. Empty Chairs = %d.\n", s->id, empty_chairs);
             
             // Now you told coor. Wait until you are called and completed getting the help.
             sem_wait(&stu_sems[s->id]);
@@ -269,7 +280,7 @@ void * coordinate_tutoring(void * arg) {
         // Wait for a student to come in
         sem_wait(coor);
         
-        // Someone has come. Add them to the waiting hall queue
+        // Someone has come. Add them to the waiting hall queu
         int hall_size, student_added = 0, added_id, added_prio;
         pthread_mutex_lock(waiting_hall_lock);
         if (active != NULL && active->visits <= MAX_VISITS) {
@@ -294,7 +305,7 @@ void * coordinate_tutoring(void * arg) {
         if (idle_tutor != NULL && hall_size > 0) {
             Debug(("Idle tutor found - T%d.\n", idle_tutor->id));
             printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
-                   added_id, added_prio, hall_size, local_served+1);
+                   added_id, MAX_VISITS-added_prio, hall_size, served);
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
             // I will assume he has been served.
@@ -303,10 +314,10 @@ void * coordinate_tutoring(void * arg) {
         else {
             Debug(("All tutors are busy right now. Please have a seat.\n"));
         }
-        sem_post(stud);
-        pthread_mutex_lock(studs_helped_lock);
-        local_served = served;
-        pthread_mutex_unlock(studs_helped_lock);
+	sem_post(stud);
+	pthread_mutex_lock(studs_helped_lock);
+	local_served = served;
+	pthread_mutex_unlock(studs_helped_lock);
     }
     
     // Close the CSMC once all students are served.
@@ -322,7 +333,7 @@ void * coordinate_tutoring(void * arg) {
 // Do the programming for 2ms and come back
 void do_programming (void) {
     SPAM(("Programming...\n"));
-    usleep(200);
+    usleep(2000);
 }
 
 // Inserts a new student (new) in the hall, after a given student (prev).
@@ -417,9 +428,6 @@ void add_student(struct student * new) {
 struct tutor * get_idle_tutor () {
     int i;
     pthread_mutex_lock(tutors_list_lock);
-    for (i=0; i<TUTORS; i++){
-        SPAM(("****** Checking tutor T%d, Status: %d Address: %p ******\n", tutors[i]->id, tutors[i]->status, tutors[i]));
-    }
     for (i=0; i<TUTORS; i++) {
         if (tutors[i].status == 0) {
             // This is the first idle tutor in the list.
@@ -430,6 +438,17 @@ struct tutor * get_idle_tutor () {
     }
     pthread_mutex_unlock(tutors_list_lock);
     return NULL;
+}
+
+// Gets the number of students being tutored currently
+int get_current_tutoring_students () {
+  int i, count=0;
+  for (i=0; i<TUTORS; i++) {
+    if (tutors[i].status == 1){
+      count++;
+    }
+  }
+  return count;
 }
 
 // Notifies all the endlessly waiting tutors to STOP
@@ -443,7 +462,6 @@ void notify_all () {
     }
     for (i=0; i<STUDENTS; i++){
         sem_post(stud);
-        //      sem_post(&stu_sems[i]);
     }
 }
 
