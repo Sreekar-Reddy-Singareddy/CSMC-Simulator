@@ -15,7 +15,7 @@
 #define SPAM(a) (void)0
 #endif
 
-#if 1
+#if 0
 #define Debug(a) printf a
 #else
 #define Debug(a) (void)0

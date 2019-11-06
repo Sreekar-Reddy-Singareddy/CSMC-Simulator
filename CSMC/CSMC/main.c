@@ -20,7 +20,8 @@
 
 #define TEST_MODE 0
 
-struct tutor * tutors [2];
+struct tutor * tuts;
+struct tutor * tutors;
 pthread_t * t_threads;
 pthread_t * s_threads;
 pthread_t * c_thread;
@@ -30,12 +31,13 @@ pthread_mutex_t * active_stud_lock;
 pthread_mutex_t * waiting_hall_lock;
 pthread_mutex_t * tutors_list_lock;
 pthread_mutex_t * empty_chairs_lock;
+pthread_mutex_t * studs_helped_lock;
 int is_csmc_open = 1;
-
+int served = 0;
 int STUDENTS, TUTORS, CHAIRS, MAX_VISITS;
 
 
-sem_t * stud, * coor, * done_tutoring, * tut_sems[2], * stu_sems[8];
+sem_t * stud, * coor, * done_tutoring, * tut_sems, * stu_sems;
 struct timespec timer;
 
 // TEST_MODE
@@ -45,11 +47,14 @@ void test_queue(void);
 int main(int argc, const char * argv[]) {
     if (TEST_MODE) {
         int i;
-        
+        tuts = malloc(sizeof(struct tutor)*4);
+        for (i=0; i<4; i++) {
+            tuts[i].id = 0;
+            tuts[i].status = 123;
+            Debug(("Tutor %d ID: %d\n",i, tuts[i].status));
+        }
         return 0;
     }
-    
-    //    freopen("output.txt", "w", stdout);
     
     // All memory allocations
     STUDENTS = atoi(argv[1]);
@@ -64,6 +69,7 @@ int main(int argc, const char * argv[]) {
     coor = malloc(sizeof(sem_t));
     active = malloc(sizeof(struct student));
     done_tutoring = malloc(sizeof(sem_t));
+    studs_helped_lock = malloc(sizeof(pthread_mutex_t));
     active_stud_lock = malloc(sizeof(pthread_mutex_t));
     waiting_hall_lock = malloc(sizeof(pthread_mutex_t));
     tutors_list_lock = malloc(sizeof(pthread_mutex_t));
@@ -74,6 +80,7 @@ int main(int argc, const char * argv[]) {
     sem_init(stud, 0, 1);
     sem_init(coor, 0, 0);
     sem_init(done_tutoring, 0, 0);
+    pthread_mutex_init(studs_helped_lock, NULL);
     pthread_mutex_init(active_stud_lock, NULL);
     pthread_mutex_init(waiting_hall_lock, NULL);
     pthread_mutex_init(tutors_list_lock, NULL);
@@ -83,12 +90,12 @@ int main(int argc, const char * argv[]) {
     hall->size = 0;
     
     // Initialising the list for tutors
+    tutors = malloc(sizeof(struct tutor)*TUTORS);
     for (i=0; i<TUTORS; i++) {
-        tutors[i] = malloc(sizeof(struct tutor));
-        tutors[i]->id = i;
-        tutors[i]->status = 0;
-        tutors[i]->number_tutored = 0;
-        tutors[i]->student = NULL;
+        tutors[i].id = i;
+        tutors[i].status = 0;
+        tutors[i].number_tutored = 0;
+        tutors[i].student = NULL;
     }
     
     // Create thread for coordinator
@@ -99,22 +106,22 @@ int main(int argc, const char * argv[]) {
     // Also initialise each thread such that the
     // execution starts from the start_tutoring function
     t_threads = malloc(sizeof(pthread_t)*TUTORS);
+    tut_sems = malloc(sizeof(sem_t) * TUTORS);
     for (i=0; i<TUTORS; i++) {
         // Semaphore for tutor to wait for coordinator to signal about a waiting student.
-        tut_sems[i] = malloc(sizeof(sem_t));
-        sem_init(tut_sems[i], 0, 0);
+        sem_init(&tut_sems[i], 0, 0);
         // Pass the tutor for every thread
-        assert(pthread_create(&t_threads[i], NULL, start_tutoring, tutors[i]) == 0);
+        assert(pthread_create(&t_threads[i], NULL, start_tutoring, &tutors[i]) == 0);
     }
     
     // Create threads for students
     // Also initialise each thread such that the
     // execution starts from the get_tutor_help function
     s_threads = malloc(sizeof(pthread_t)*STUDENTS);
+    stu_sems = malloc(sizeof(sem_t) * STUDENTS);
     for (i=0; i<STUDENTS; i++) {
         // Semaphore for student to wait until tutoring is done. Tutor tells when it is done.
-        stu_sems[i] = malloc(sizeof(sem_t));
-        sem_init(stu_sems[i], 0, 0);
+        sem_init(&stu_sems[i], 0, 0);
         // Create a student for this thread
         struct student * s = malloc(sizeof(struct student));
         s->id = i;
@@ -153,7 +160,7 @@ void * start_tutoring (void * arg) {
         t->status = 0;
         pthread_mutex_unlock(tutors_list_lock);
         Debug(("(T%d) Waiting for coordinator. Address: %p \n", t->id, t));
-        sem_wait(tut_sems[t->id]);
+        sem_wait(&tut_sems[t->id]);
         
         // Going to busy state here
         pthread_mutex_lock(tutors_list_lock);
@@ -190,7 +197,7 @@ void * start_tutoring (void * arg) {
         t->student->tutor_id = t->id;
         int id = t->student->id;
         t->student = NULL;
-        sem_post(stu_sems[id]);
+        sem_post(&stu_sems[id]);
     }
     return NULL;
 }
@@ -225,9 +232,15 @@ void * get_tutor_help (void * student) {
             printf("Student %d takes a seat. Empty Chairs = %d.\n", s->id, empty_chairs);
             
             // Now you told coor. Wait until you are called and completed getting the help.
-            sem_wait(stu_sems[s->id]);
+            sem_wait(&stu_sems[s->id]);
             printf("Student %d received help from Tutor %d.\n", s->id, s->tutor_id);
 	    s->tutor_id = -1;            
+
+	    // This student has been served once
+	    pthread_mutex_lock(studs_helped_lock);
+	    served += 1;
+	    pthread_mutex_unlock(studs_helped_lock);
+
             // You are done with getting help. You can leave now.
             do_programming();
         }
@@ -239,23 +252,27 @@ void * get_tutor_help (void * student) {
 
 // Starting point for the execution of coordintor thread
 void * coordinate_tutoring(void * arg) {
-    int total = MAX_VISITS*STUDENTS;
+  int total = MAX_VISITS*STUDENTS;
+  int local_served;
+  pthread_mutex_lock(studs_helped_lock);
+  local_served = served;
+  pthread_mutex_unlock(studs_helped_lock);
     SPAM(("CSMC Opened.\n"));
     
-    while (total > 0) {
+    while (local_served < MAX_VISITS*STUDENTS) {
         // Wait for a student to come in
         sem_wait(coor);
         
         // Someone has come. Add them to the waiting hall queue
-        int hall_size, student_added = 0;
+        int hall_size, student_added = 0, added_id, added_prio;
         pthread_mutex_lock(waiting_hall_lock);
         if (active != NULL && active->visits <= MAX_VISITS) {
 	  Debug(("Active Studend S%d and V=%d\n", active->id, active->visits));
             add_student(active);
+	    added_id = active->id;
+	    added_prio = active->visits;
             student_added = 1;
             hall_size = hall->size;
-            printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
-                   active->id, MAX_VISITS-active->visits, hall_size, MAX_VISITS*STUDENTS-total+1);
 	    active = NULL;
         }
 	else {
@@ -270,16 +287,20 @@ void * coordinate_tutoring(void * arg) {
         struct tutor * idle_tutor = get_idle_tutor();
         if (idle_tutor != NULL && hall_size > 0) {
             Debug(("Idle tutor found - T%d.\n", idle_tutor->id));
+	    printf("Student %d with priority %d in the queue. Waiting students now = %d. Total requests = %d.\n",
+                   added_id, added_prio, hall_size, local_served+1);
             // Someone is there! Then do the tutoring...
             // Since this tutor will take away one student,
             // I will assume he has been served.
-            sem_post(tut_sems[idle_tutor->id]);
-            total--;
+            sem_post(&tut_sems[idle_tutor->id]);
         }
         else {
             Debug(("All tutors are busy right now. Please have a seat.\n"));
         }
         sem_post(stud);
+	pthread_mutex_lock(studs_helped_lock);
+	local_served = served;
+	pthread_mutex_unlock(studs_helped_lock);
     }
     
     // Close the CSMC once all students are served.
@@ -394,9 +415,9 @@ struct tutor * get_idle_tutor () {
         SPAM(("****** Checking tutor T%d, Status: %d Address: %p ******\n", tutors[i]->id, tutors[i]->status, tutors[i]));
     }
     for (i=0; i<TUTORS; i++) {
-        if (tutors[i]->status == 0) {
+        if (tutors[i].status == 0) {
             // This is the first idle tutor in the list.
-            struct tutor * idle_tutor = tutors[i];
+            struct tutor * idle_tutor = &tutors[i];
             pthread_mutex_unlock(tutors_list_lock);
             return idle_tutor;
         }
@@ -409,11 +430,14 @@ struct tutor * get_idle_tutor () {
 void notify_all () {
     int i;
     for (i=0; i<TUTORS; i++){
-        sem_post(tut_sems[i]);
+      int * code = malloc(sizeof(int));
+      sem_getvalue(&tut_sems[i], code);
+      Debug(("At the closing time, tutor T%d was %d\n", i, *code));
+        sem_post(&tut_sems[i]);
     }
     for (i=0; i<STUDENTS; i++){
-      sem_post(stu_sems[i]);
-      //      sem_post(stud);
+      sem_post(stud);
+      //      sem_post(&stu_sems[i]);
     }
 }
 
