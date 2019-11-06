@@ -216,10 +216,13 @@ void * get_tutor_help (void * student) {
             SPAM(("Oops! No chairs. I (S%d) am going back...\n", s->id));
             Debug(("CSMC Opened: %d Visits(%d)\n", is_csmc_open, s->visits));
             printf("Student %d found no empty chair. Will try again later.\n", s->id);
+	    sem_wait(stud);
+	    sem_post(coor);
             do_programming();
             continue;
         }
         else if (s->visits >= MAX_VISITS) {
+	  pthread_mutex_unlock(empty_chairs_lock);
             sem_wait(stud);
             sem_post(coor);
             continue;
