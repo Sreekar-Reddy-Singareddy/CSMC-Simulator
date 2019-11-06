@@ -199,16 +199,17 @@ void * start_tutoring (void * arg) {
 void * get_tutor_help (void * student) {
     struct student * s = (struct student *) student;
     while (s->visits < MAX_VISITS || is_csmc_open) {
-        Debug(("Hey, I (S%d) need some tutor help!\n", s->id));
+      Debug(("Hey, I (S%d) need some tutor help! CSMC(%d) Visits(%d)\n", s->id, is_csmc_open, s->visits));
         
         // Entered the CSMC for help.
         pthread_mutex_lock(empty_chairs_lock);
-        if (empty_chairs <= 0) {
+        if (empty_chairs <= 0 || s->visits >= MAX_VISITS) {
             // No chairs. Come back later.
             pthread_mutex_unlock(empty_chairs_lock);
 	    sem_wait(stud);
 	    sem_post(coor);
             SPAM(("Oops! No chairs. I (S%d) am going back...\n", s->id));
+	    Debug(("CSMC Opened: %d Visits(%d)\n", is_csmc_open, s->visits));
             printf("Student %d found no empty chair. Will try again later.\n", s->id);
             do_programming();
             continue;
@@ -226,7 +227,7 @@ void * get_tutor_help (void * student) {
             // Now you told coor. Wait until you are called and completed getting the help.
             sem_wait(stu_sems[s->id]);
             printf("Student %d received help from Tutor %d.\n", s->id, s->tutor_id);
-            
+	    s->tutor_id = -1;            
             // You are done with getting help. You can leave now.
             do_programming();
         }
@@ -249,6 +250,7 @@ void * coordinate_tutoring(void * arg) {
         int hall_size, student_added = 0;
         pthread_mutex_lock(waiting_hall_lock);
         if (active != NULL && active->visits <= MAX_VISITS) {
+	  Debug(("Active Studend S%d and V=%d\n", active->id, active->visits));
             add_student(active);
             student_added = 1;
             hall_size = hall->size;
@@ -411,6 +413,7 @@ void notify_all () {
     }
     for (i=0; i<STUDENTS; i++){
       sem_post(stu_sems[i]);
+      //      sem_post(stud);
     }
 }
 
